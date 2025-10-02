@@ -1,0 +1,30 @@
+{
+  "name": "webauthn-relying-party",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@simplewebauthn/browser": "^9.0.1",
+    "@simplewebauthn/server": "^9.0.3",
+    "@supabase/supabase-js": "^2.58.0",
+    "@vercel/kv": "^3.0.0",
+    "@vercel/postgres": "^0.10.0",
+    "next": "^14.0.0",
+    "qrcode": "^1.5.3",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "supabase": "^2.48.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/qrcode": "^1.5.5",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "typescript": "^5.0.0"
+  }
+}
