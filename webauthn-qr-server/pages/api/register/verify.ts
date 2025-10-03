@@ -5,6 +5,13 @@ import { getQRSession, updateQRSession, getUser, addCredentialToUser } from '../
 const rpID = process.env.RP_ID || 'localhost';
 const origin = process.env.ORIGIN || 'http://localhost:3000';
 
+// ✅ Add Android APK key hash origin (use env var if available, fallback to known hash)
+const androidApkHash =
+  process.env.ANDROID_APK_HASH ||
+  'H8aaJx3lOZCaxVnsZU5__ALkVjXJALA11rtegEE0Ldc';
+
+const validOrigins = [origin, `android:apk-key-hash:${androidApkHash}`];
+
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
@@ -25,7 +32,7 @@ export default async function handler(
     console.log('👤 Username:', username);
     console.log('📱 Session ID:', sessionId || 'N/A');
     console.log('🔐 Has Credential:', !!credential);
-    
+
     if (credential) {
       console.log('🔍 Credential ID:', credential.id?.substring(0, 30) + '...');
       console.log('🔍 Credential Type:', credential.type);
@@ -37,7 +44,7 @@ export default async function handler(
     // ============================================
     if (sessionId) {
       console.log('📱 Processing QR-based registration');
-      
+
       const session = await getQRSession(sessionId);
       if (!session || session.type !== 'register') {
         console.log('❌ Invalid or expired QR session');
@@ -59,7 +66,7 @@ export default async function handler(
 
       const expectedChallenge = session.challenge;
       console.log('🔑 Expected challenge:', expectedChallenge.substring(0, 20) + '...');
-      console.log('🌐 Expected origin:', origin);
+      console.log('🌐 Expected origins:', validOrigins);
       console.log('🏢 Expected RP ID:', rpID);
 
       let verification;
@@ -67,28 +74,29 @@ export default async function handler(
         verification = await verifyRegistrationResponse({
           response: credential,
           expectedChallenge,
-          expectedOrigin: origin,
+          expectedOrigin: validOrigins,
           expectedRPID: rpID,
-          requireUserVerification: false, // ← Don't require UV
+          requireUserVerification: false,
         });
       } catch (verifyError: any) {
         console.error('❌ Verification threw error:', verifyError.message);
-        return res.status(400).json({ 
-          error: 'Verification failed', 
-          details: verifyError.message 
+        return res.status(400).json({
+          error: 'Verification failed',
+          details: verifyError.message,
         });
       }
 
       console.log('🔍 Verification result:', verification.verified);
 
       if (verification.verified && verification.registrationInfo) {
-        const { credentialPublicKey, credentialID, counter } = verification.registrationInfo;
+        const { credentialPublicKey, credentialID, counter } =
+          verification.registrationInfo;
 
         console.log('➕ Adding credential to user:', session.username);
         console.log('🆔 Credential ID length:', credentialID.length);
         console.log('🔑 Public key length:', credentialPublicKey.length);
         console.log('🔢 Counter:', counter);
-        
+
         try {
           await addCredentialToUser(session.username, {
             credentialID,
@@ -97,30 +105,33 @@ export default async function handler(
             transports: credential.response.transports || [],
             createdViaQR: true,
           });
-          
+
           console.log('✅ Credential successfully added!');
         } catch (addError: any) {
           console.error('❌ Failed to add credential:', addError.message);
           console.error('Stack:', addError.stack);
-          return res.status(500).json({ 
+          return res.status(500).json({
             error: 'Failed to save credential',
-            details: addError.message 
+            details: addError.message,
           });
         }
 
-        await updateQRSession(sessionId, { status: 'completed', verified: true });
+        await updateQRSession(sessionId, {
+          status: 'completed',
+          verified: true,
+        });
 
         console.log('✅ Registration successful for:', session.username);
         console.log('⏱️ Request completed in', Date.now() - startTime, 'ms');
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
-        
+
         return res.status(200).json({ verified: true });
       }
 
       await updateQRSession(sessionId, { status: 'failed', verified: false });
       console.log('❌ Verification failed');
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
-      
+
       return res.status(400).json({ verified: false });
     }
 
@@ -128,7 +139,7 @@ export default async function handler(
     // Handle regular registration (same device)
     // ============================================
     console.log('💻 Processing regular registration');
-    
+
     if (!username) {
       console.log('❌ No username provided');
       return res.status(400).json({ error: 'Username required' });
@@ -138,7 +149,7 @@ export default async function handler(
       console.log('❌ No credential provided');
       return res.status(400).json({ error: 'Credential required' });
     }
-    
+
     const user = await getUser(username);
     if (!user) {
       console.log('❌ User not found:', username);
@@ -148,11 +159,13 @@ export default async function handler(
     const expectedChallenge = user.currentChallenge;
     if (!expectedChallenge) {
       console.log('❌ No challenge found for user');
-      return res.status(400).json({ error: 'No challenge found. Please try registration again.' });
+      return res.status(400).json({
+        error: 'No challenge found. Please try registration again.',
+      });
     }
 
     console.log('🔑 Expected challenge:', expectedChallenge.substring(0, 20) + '...');
-    console.log('🌐 Expected origin:', origin);
+    console.log('🌐 Expected origins:', validOrigins);
     console.log('🏢 Expected RP ID:', rpID);
 
     let verification;
@@ -160,33 +173,40 @@ export default async function handler(
       verification = await verifyRegistrationResponse({
         response: credential,
         expectedChallenge,
-        expectedOrigin: origin,
+        expectedOrigin: validOrigins,
         expectedRPID: rpID,
-        requireUserVerification: false, // ← Don't require UV
+        requireUserVerification: false,
       });
     } catch (verifyError: any) {
       console.error('❌ Verification threw error:', verifyError.message);
       console.error('Error details:', verifyError);
-      return res.status(400).json({ 
-        error: 'Verification failed', 
-        details: verifyError.message 
+      return res.status(400).json({
+        error: 'Verification failed',
+        details: verifyError.message,
       });
     }
 
     console.log('🔍 Verification result:', verification.verified);
-    
+
     if (verification.registrationInfo) {
       console.log('📋 Registration info received:');
-      console.log('  - Credential ID length:', verification.registrationInfo.credentialID.length);
-      console.log('  - Public key length:', verification.registrationInfo.credentialPublicKey.length);
+      console.log(
+        '  - Credential ID length:',
+        verification.registrationInfo.credentialID.length
+      );
+      console.log(
+        '  - Public key length:',
+        verification.registrationInfo.credentialPublicKey.length
+      );
       console.log('  - Counter:', verification.registrationInfo.counter);
     }
 
     if (verification.verified && verification.registrationInfo) {
-      const { credentialPublicKey, credentialID, counter } = verification.registrationInfo;
+      const { credentialPublicKey, credentialID, counter } =
+        verification.registrationInfo;
 
       console.log('➕ Adding credential to user:', username);
-      
+
       try {
         await addCredentialToUser(username, {
           credentialID,
@@ -194,32 +214,35 @@ export default async function handler(
           counter,
           transports: credential.response?.transports || [],
         });
-        
+
         console.log('✅ Credential successfully added to database!');
-        
+
         // Verify it was added
         const updatedUser = await getUser(username);
-        console.log('🔍 Verification: User now has', updatedUser?.credentials.length, 'credentials');
-        
+        console.log(
+          '🔍 Verification: User now has',
+          updatedUser?.credentials.length,
+          'credentials'
+        );
       } catch (addError: any) {
         console.error('❌ Failed to add credential:', addError.message);
         console.error('Stack:', addError.stack);
-        return res.status(500).json({ 
+        return res.status(500).json({
           error: 'Failed to save credential',
-          details: addError.message 
+          details: addError.message,
         });
       }
 
       console.log('✅ Registration successful for:', username);
       console.log('⏱️ Request completed in', Date.now() - startTime, 'ms');
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
-      
+
       return res.status(200).json({ verified: true });
     }
 
     console.log('❌ Verification failed');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
-    
+
     return res.status(400).json({ verified: false, error: 'Verification failed' });
   } catch (error: any) {
     console.error('❌ VERIFICATION ERROR:', error);
@@ -227,10 +250,10 @@ export default async function handler(
     console.error('Error message:', error.message);
     console.error('Stack:', error.stack);
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
-    return res.status(500).json({ 
-      error: 'Verification failed', 
+    return res.status(500).json({
+      error: 'Verification failed',
       details: error.message,
-      name: error.name 
+      name: error.name,
     });
   }
 }
